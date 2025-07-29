@@ -1,0 +1,26 @@
+{
+  "name": "c3-type-analyzer",
+  "version": "1.0.0",
+  "description": "Analyzes relationships between C3 types and produces topological sorts",
+  "main": "src/typeAnalyzer.js",
+  "scripts": {
+    "test": "node src/test.js",
+    "example": "node src/examples.js"
+  },
+  "keywords": [
+    "c3",
+    "type-analysis",
+    "topological-sort",
+    "dependency-graph",
+    "graph-algorithms"
+  ],
+  "author": "C3 Developer",
+  "license": "MIT",
+  "files": [
+    "src/",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=12.0.0"
+  }
+}
