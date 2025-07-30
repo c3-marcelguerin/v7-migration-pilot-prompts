@@ -66,6 +66,14 @@ class TypeAnalyzer {
     analyzeFromRoot(rootTypeName) {
         this.graph = new TypeGraph();
         this.graph.depths.set(rootTypeName, 0);
+        
+        // Check if root type exists before starting analysis
+        try {
+            c3Type(rootTypeName);
+        } catch (error) {
+            throw new Error(`Root type '${rootTypeName}' not found: ${error.message}`);
+        }
+        
         this._analyzeType(rootTypeName, 0);
         this._detectAndResolveCycles();
         return this._topologicalSort();
@@ -132,7 +140,8 @@ class TypeAnalyzer {
                 // Found a cycle
                 const cycleStart = path.indexOf(typeName);
                 const cycle = path.slice(cycleStart);
-                cycles.push([...cycle, typeName]);
+                cycle.push(typeName); // Complete the cycle
+                cycles.push(cycle);
                 return;
             }
 
@@ -145,7 +154,7 @@ class TypeAnalyzer {
             path.push(typeName);
 
             for (const neighbor of this.graph.getEdges(typeName)) {
-                dfs(neighbor, path);
+                dfs(neighbor, [...path]); // Pass a copy of path to avoid issues
             }
 
             path.pop();
@@ -161,14 +170,23 @@ class TypeAnalyzer {
 
         // Resolve cycles by removing edges to types closest to root
         for (const cycle of cycles) {
+            if (cycle.length === 0) continue;
+            
             let minDepth = Infinity;
             let targetType = null;
             let sourceType = null;
 
+            // Find the edge pointing to the type with minimum depth in the cycle
             for (let i = 0; i < cycle.length - 1; i++) {
                 const current = cycle[i];
                 const next = cycle[i + 1];
-                const nextDepth = this.graph.depths.get(next) || Infinity;
+                let nextDepth = this.graph.depths.get(next);
+                
+                // If depth is not set, it means this type wasn't reached during initial traversal
+                // In that case, treat it as very deep (but not Infinity to avoid issues)
+                if (nextDepth === undefined) {
+                    nextDepth = 1000;
+                }
 
                 if (nextDepth < minDepth) {
                     minDepth = nextDepth;
@@ -178,7 +196,7 @@ class TypeAnalyzer {
             }
 
             if (sourceType && targetType) {
-                console.log(`Removing cycle edge: ${sourceType} -> ${targetType} (depth ${minDepth})`);
+                console.log(`Removing cycle edge: ${sourceType} -> ${targetType} (target depth ${minDepth})`);
                 this.graph.removeEdge(sourceType, targetType);
             }
         }
@@ -283,6 +301,7 @@ function analyzeTypeRelationships(rootTypeName) {
             stats
         };
     } catch (error) {
+        console.error(`Analysis failed for ${rootTypeName}:`, error.message);
         return {
             success: false,
             error: error.message,

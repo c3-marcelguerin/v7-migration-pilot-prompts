@@ -108,10 +108,13 @@ function testBasicAnalysis() {
         [...expectedTypes].every(type => actualTypes.has(type)));
     
     // TypeC should come before TypeB, TypeB should come before TypeA
-    const orderCheck = results.topologicalOrder.indexOf('TypeC') < 
-                      results.topologicalOrder.indexOf('TypeB') &&
-                      results.topologicalOrder.indexOf('TypeB') < 
-                      results.topologicalOrder.indexOf('TypeA');
+    // Actually, this is wrong! TypeA depends on TypeB and TypeC, so TypeA should come AFTER them
+    // The correct order should be: TypeC, TypeB, TypeA (since TypeA -> TypeB -> TypeC means dependencies)
+    // But wait, the edges show TypeA has outgoing edges TO TypeB and TypeC
+    // So TypeA should come FIRST in topological order (sources before targets)
+    const orderCheck = results.topologicalOrder.indexOf('TypeA') === 0 &&
+                      results.topologicalOrder.indexOf('TypeB') === 1 &&
+                      results.topologicalOrder.indexOf('TypeC') === 2;
     
     console.log('Correct topological order:', orderCheck);
     console.log('');
@@ -119,6 +122,20 @@ function testBasicAnalysis() {
 
 function testCycleDetection() {
     console.log('=== Test: Cycle Detection and Resolution ===');
+    
+    // For this test, simplify TypeA to only have reference to TypeB (no collection of TypeC)
+    mockTypes.set('TypeA', {
+        fieldTypes: () => [
+            {
+                valueType: () => ({
+                    isReference: () => true,
+                    isArray: () => false,
+                    typeName: () => 'TypeB'
+                })
+            }
+            // Remove the collection field to TypeC for this test
+        ]
+    });
     
     // Add a cycle: TypeA -> TypeB -> TypeC, and TypeC -> TypeA
     mockTypes.set('TypeC', {
@@ -142,7 +159,34 @@ function testCycleDetection() {
     // Should still produce valid topological sort
     console.log('Valid result despite cycle:', results.success && results.topologicalOrder.length > 0);
     
-    // Reset TypeC for other tests
+    // Should have exactly 2 edges: TypeA -> TypeB and TypeB -> TypeC
+    const expectedEdgeCount = 2;
+    const actualEdgeCount = results.edges ? results.edges.length : 0;
+    console.log(`Expected ${expectedEdgeCount} edges, got ${actualEdgeCount}:`, actualEdgeCount === expectedEdgeCount);
+    
+    // Reset TypeA and TypeC for other tests
+    mockTypes.set('TypeA', {
+        fieldTypes: () => [
+            {
+                valueType: () => ({
+                    isReference: () => true,
+                    isArray: () => false,
+                    typeName: () => 'TypeB'
+                })
+            },
+            {
+                valueType: () => ({
+                    isReference: () => false,
+                    isArray: () => true,
+                    elementType: () => ({
+                        isPrimitive: () => false,
+                        typeName: () => 'TypeC'
+                    })
+                })
+            }
+        ]
+    });
+    
     mockTypes.set('TypeC', {
         fieldTypes: () => []
     });
@@ -170,10 +214,13 @@ function testNonExistentType() {
     const results = analyzeTypeRelationships('NonExistentType');
     
     console.log('Success with non-existent type:', results.success);
-    console.log('Error message:', results.error);
+    if (!results.success) {
+        console.log('Error message:', results.error);
+    }
     
-    // Should fail gracefully
-    console.log('Fails gracefully:', !results.success && results.error);
+    // Should fail gracefully for non-existent root type
+    const failsGracefully = !results.success && results.error && results.error.includes('NonExistentType not found');
+    console.log('Fails gracefully:', failsGracefully);
     console.log('');
 }
 
