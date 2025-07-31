@@ -139,7 +139,7 @@ class TypeGraphAnalyzer {
 
     /**
      * Perform topological sort using Kahn's algorithm
-     * @returns {Array} Topologically sorted type names (dependencies first)
+     * @returns {Array} Topologically sorted type names (dependencies first for migration)
      */
     topologicalSort() {
         const inDegree = new Map();
@@ -179,6 +179,10 @@ class TypeGraphAnalyzer {
                 }
             }
         }
+
+        // For migration planning, reverse the order so dependencies come first
+        // If A->B means A depends on B, then B must be migrated before A
+        return result.reverse();
 
         if (result.length !== this.types.size) {
             console.warn(`Topological sort incomplete: ${result.length}/${this.types.size} types sorted`);

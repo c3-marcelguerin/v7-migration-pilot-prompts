@@ -51,19 +51,22 @@ describe('TypeGraphAnalyzer', () => {
             const result = analyzer.topologicalSort();
             
             expect(result).toHaveLength(4);
-            // In our edge direction: A->B means A depends on B
-            // So B must come before A in migration order
-            // TypeD has highest in-degree (2), so should come last
-            // TypeA has no in-degree (0), so should come first
+            // Migration order: dependencies first, then dependents
+            // TypeD has no dependencies → should be first
+            // TypeB and TypeC depend only on TypeD → should be middle
+            // TypeA depends on TypeB and TypeC → should be last
             const typeDIndex = result.indexOf('TypeD');
             const typeBIndex = result.indexOf('TypeB');
             const typeCIndex = result.indexOf('TypeC');
             const typeAIndex = result.indexOf('TypeA');
             
-            expect(typeAIndex).toBeLessThan(typeBIndex);
-            expect(typeAIndex).toBeLessThan(typeCIndex);
-            expect(typeBIndex).toBeLessThan(typeDIndex);
-            expect(typeCIndex).toBeLessThan(typeDIndex);
+            // TypeD should come first (no dependencies)
+            expect(typeDIndex).toBe(0);
+            // TypeB and TypeC should come before TypeA
+            expect(typeBIndex).toBeLessThan(typeAIndex);
+            expect(typeCIndex).toBeLessThan(typeAIndex);
+            // TypeA should be last
+            expect(typeAIndex).toBe(3);
         });
 
         it('should handle single node graph', () => {
