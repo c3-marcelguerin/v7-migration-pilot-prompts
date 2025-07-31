@@ -183,15 +183,22 @@ describe('TypeGraphAnalyzer', () => {
     });
 
     describe('analyzeWorkstreams', () => {
-        it('should identify connected components correctly', () => {
+        it('should identify workstreams correctly based on dependency convergence', () => {
             analyzer.loadData(mockData);
             const workstreams = analyzer.analyzeWorkstreams();
             
-            expect(workstreams.totalWorkstreams).toBe(1);
-            expect(workstreams.workstreams[0]).toContain('TypeA');
-            expect(workstreams.workstreams[0]).toContain('TypeB');
-            expect(workstreams.workstreams[0]).toContain('TypeC');
-            expect(workstreams.workstreams[0]).toContain('TypeD');
+            // With new workstream logic:
+            // TypeA -> TypeB -> TypeD, TypeA -> TypeC -> TypeD
+            // Expected: TypeD (leaf), TypeB (depends on TypeD), TypeC (depends on TypeD), TypeA (depends on TypeB & TypeC)
+            expect(workstreams.totalWorkstreams).toBe(4);
+            expect(workstreams.maxParallelWorkstreams).toBe(2); // TypeB and TypeC can run in parallel after TypeD
+            
+            // Check that all types are distributed among workstreams
+            const allTypesInWorkstreams = workstreams.workstreams.flat();
+            expect(allTypesInWorkstreams).toContain('TypeA');
+            expect(allTypesInWorkstreams).toContain('TypeB');
+            expect(allTypesInWorkstreams).toContain('TypeC');
+            expect(allTypesInWorkstreams).toContain('TypeD');
         });
 
         it('should handle disconnected components', () => {

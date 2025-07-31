@@ -182,7 +182,7 @@ class TypeGraphAnalyzer {
 
         // For migration planning, reverse the order so dependencies come first
         // If A->B means A depends on B, then B must be migrated before A
-        return result.reverse();
+        result.reverse();
 
         if (result.length !== this.types.size) {
             console.warn(`Topological sort incomplete: ${result.length}/${this.types.size} types sorted`);
@@ -308,26 +308,202 @@ class TypeGraphAnalyzer {
     }
 
     /**
-     * Analyze workstreams (connected components)
+     * Analyze workstreams based on dependency convergence
      * @returns {Object} Workstream analysis
      */
     analyzeWorkstreams() {
-        const visited = new Set();
-        const workstreams = [];
-
-        for (const typeName of this.types.keys()) {
-            if (!visited.has(typeName)) {
-                const workstream = this.findConnectedComponent(typeName, visited);
-                workstreams.push(workstream);
-            }
-        }
-
+        // Build workstreams by following dependency paths from leaves to roots
+        const workstreams = this.buildDependencyWorkstreams();
+        
+        // Calculate parallelism
+        const parallelism = this.calculateMaxParallelism(workstreams);
+        
         return {
-            workstreams,
+            workstreams: workstreams.map(ws => ws.types),
+            workstreamDetails: workstreams,
             minParallelWorkstreams: 1,
-            maxParallelWorkstreams: workstreams.length,
+            maxParallelWorkstreams: parallelism,
             totalWorkstreams: workstreams.length
         };
+    }
+
+    /**
+     * Build workstreams by following dependency paths from leaf nodes
+     * @returns {Array} Array of workstream objects
+     */
+    buildDependencyWorkstreams() {
+        const workstreams = [];
+        const processedTypes = new Set();
+        
+        // Start from leaf nodes (types with no outgoing dependencies)
+        const leafNodes = this.findLeafNodes();
+        
+        // Build workstreams from each leaf node following dependency chains
+        for (const leaf of leafNodes) {
+            if (!processedTypes.has(leaf)) {
+                const workstream = this.buildWorkstreamFromLeaf(leaf, processedTypes);
+                if (workstream.types.length > 0) {
+                    workstreams.push(workstream);
+                }
+            }
+        }
+        
+        // Handle any remaining unprocessed types
+        for (const typeName of this.types.keys()) {
+            if (!processedTypes.has(typeName)) {
+                const workstream = {
+                    types: [typeName],
+                    dependencies: []
+                };
+                workstreams.push(workstream);
+                processedTypes.add(typeName);
+            }
+        }
+        
+        // Now calculate dependencies for all workstreams
+        for (let i = 0; i < workstreams.length; i++) {
+            workstreams[i].dependencies = this.calculateWorkstreamDependencies(workstreams[i].types, workstreams, i);
+        }
+        
+        return workstreams;
+    }
+    
+    /**
+     * Find leaf nodes (types with no outgoing dependencies)
+     * @returns {Array} Array of leaf node type names
+     */
+    findLeafNodes() {
+        const leafNodes = [];
+        
+        for (const typeName of this.types.keys()) {
+            const outgoing = this.adjacencyList.get(typeName) || [];
+            if (outgoing.length === 0) {
+                leafNodes.push(typeName);
+            }
+        }
+        
+        return leafNodes;
+    }
+    
+    /**
+     * Build a workstream starting from a leaf node and following incoming dependencies
+     * @param {string} startNode - Starting leaf node
+     * @param {Set} globalProcessed - Globally processed types
+     * @returns {Object} Workstream object
+     */
+    buildWorkstreamFromLeaf(startNode, globalProcessed) {
+        const workstreamTypes = [];
+        const visited = new Set();
+        let current = startNode;
+        
+        // Follow the dependency chain backwards
+        while (current && !visited.has(current) && !globalProcessed.has(current)) {
+            visited.add(current);
+            globalProcessed.add(current);
+            workstreamTypes.push(current);
+            
+            const incoming = this.reversedAdjacencyList.get(current) || [];
+            
+            // If there's exactly one incoming dependency, check if we can continue
+            if (incoming.length === 1) {
+                const parent = incoming[0];
+                const parentOutgoing = this.adjacencyList.get(parent) || [];
+                
+                // Only continue if the parent has exactly one outgoing dependency (to current)
+                // If parent has multiple outgoing dependencies, it should be its own workstream
+                if (parentOutgoing.length === 1) {
+                    current = parent;
+                } else {
+                    // Parent has multiple dependencies, stop here
+                    break;
+                }
+            } else {
+                // Multiple incoming dependencies or none, stop the chain
+                break;
+            }
+        }
+        
+        // Reverse to get correct migration order (dependencies first)
+        workstreamTypes.reverse();
+        
+        return {
+            types: workstreamTypes,
+            dependencies: []  // Will be calculated later
+        };
+    }
+    
+    /**
+     * Calculate dependencies for a workstream
+     * @param {Array} workstreamTypes - Types in the workstream
+     * @param {Array} allWorkstreams - All workstreams
+     * @param {number} currentIndex - Index of current workstream (to avoid self-dependency)
+     * @returns {Array} Array of workstream indices that this workstream depends on
+     */
+    calculateWorkstreamDependencies(workstreamTypes, allWorkstreams, currentIndex = -1) {
+        const dependencies = new Set();
+        
+        // Look at all dependencies of types in this workstream
+        for (const type of workstreamTypes) {
+            const typeDependencies = this.adjacencyList.get(type) || [];
+            
+            for (const dep of typeDependencies) {
+                // Find which workstream contains this dependency
+                for (let i = 0; i < allWorkstreams.length; i++) {
+                    if (i !== currentIndex && allWorkstreams[i].types.includes(dep)) {
+                        dependencies.add(i);
+                        break;
+                    }
+                }
+            }
+        }
+        
+        return Array.from(dependencies);
+    }
+    
+    /**
+     * Calculate maximum number of workstreams that can run in parallel
+     * @param {Array} workstreams - Array of workstream objects
+     * @returns {number} Maximum parallel workstreams
+     */
+    calculateMaxParallelism(workstreams) {
+        // Simulate the execution to find maximum parallelism
+        const completed = new Set();
+        const running = new Set();
+        let maxParallel = 0;
+        
+        // Continue until all workstreams are completed
+        while (completed.size < workstreams.length) {
+            // Find workstreams that can start (all dependencies completed)
+            const startable = [];
+            for (let i = 0; i < workstreams.length; i++) {
+                if (!completed.has(i) && !running.has(i)) {
+                    const canStart = workstreams[i].dependencies.every(dep => completed.has(dep));
+                    if (canStart) {
+                        startable.push(i);
+                    }
+                }
+            }
+            
+            // Start all startable workstreams
+            for (const workstreamIndex of startable) {
+                running.add(workstreamIndex);
+            }
+            
+            // Update maximum parallelism
+            maxParallel = Math.max(maxParallel, running.size);
+            
+            // Complete the first running workstream (simplified simulation)
+            if (running.size > 0) {
+                const firstRunning = running.values().next().value;
+                running.delete(firstRunning);
+                completed.add(firstRunning);
+            } else {
+                // No workstreams can start and none are running - should not happen in valid graph
+                break;
+            }
+        }
+        
+        return Math.max(1, maxParallel);
     }
 
     /**
