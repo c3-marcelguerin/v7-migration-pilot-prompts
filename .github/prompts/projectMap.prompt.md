@@ -54,9 +54,12 @@ When determining the order of migration, the program must ensure that types are 
 
 Using the information provided above, write a set of programs that analyze the relationships between C3 types based on their reference and collection fields.
 
+## Type Relationships
+
 When a type A references another type B, it creates a directed edge in a graph.
 The edge represents a dependency of A on B.
 In the context of migration, B must be migrated before A, and all dependencies of A must be migrated before A.
+This fact will be important when detecting cycles in the graph.
 
 It is up to you to determine whether the edge should be directed from A to B or from B to A, but the important thing is that the direction of the edge must be consistent throughout the program.
 Directed edges are unique in this graph, meaning that if A references B, there will be a single edge involving A and B, even if there are multiple fields in A that reference type B.
@@ -64,9 +67,8 @@ Directed edges are unique in this graph, meaning that if A references B, there w
 Select the direction that makes the most sense for the migration process and enables quick answers to the following questions:
 - On which types should my team start the migration?
 - What types must be migrated before a given type?
-- What are the minimum and maximum number of parallel workstreams I can have during the migration?
-For the purposes of this migration, a "workstream" is a set of interconnected types that can be migrated in sequence without waiting for other types to be migrated.
-For example, if TypeA references TypeB and TypeB references TypeC, then TypeA, TypeB, and TypeC are all part of the same workstream.
+- What are the maximum number of parallel workstreams I can have during the migration?
+See the section below for more details on workstreams.
 - Show me the migration sequence for a given type (by type name).
 Note that this should refer to the existing graph and not require a new graph because cycle detection would result in a different graph.
 
@@ -80,14 +82,28 @@ Add endpoints to the Node.js program that will allow it to be run from the comma
 
 The Snippet should gather data required during the analysis phase.
 Keep the Snippet simple and focused on gathering the necessary data.
+Do not compute any analysis in the Snippet including complexity.
 
 The Node.js program should analyze the data and produce a topological sort of the types, reflecting acceptable migration order, where dependencies are migrated before dependents.
+
+## Type Complexity
 
 During the analysis phase, for each type the program should assign a level of complexity based on the number of edges it has.
 Break down the complexity of each type into three t-shirt sizes (S, M, L) based on the number of edges using the following criteria:
 - S: 45% of the types
 - M: 30% of the types
 - L: 25% of the types
+
+Only types that are `inUse` should be considered for complexity assignment.
+
+## Type Status
+
+Define the following fields for each vertex in the graph:
+- An `inUse` field indicating whether the type is currently in use (true) or not (false).
+A type that is not in use should not be considered for complexity assignment or workstream analysis.
+- A `status` field to indicate whether the migration of that type is not started (Todo), in progress (Doing), or completed (Done)
+- An `assignedTo` field indicating which team member is assigned to migrate that type
+- A `startable` field indicating whether the type can be migrated (i.e., all dependencies have been migrated)
 
 ## Ignored Types
 
@@ -115,6 +131,32 @@ The program should ignore the following types, essentially treating them as "pri
 - User
 - VersionEdit
 
+## Workstreams
+
+For the purposes of this migration, a "workstream" is a set of interconnected types that can be migrated in sequence without waiting for other types to be migrated.
+Remember that migration of a type can only start when all its dependencies have been migrated.
+
+Consider the following example edges:
+TypeA -> TypeB
+TypeA -> TypeC
+TypeC -> TypeD
+
+There are two workstreams in this example:
+[TypeB]
+[TypeD, TypeC]
+
+TypeA is a workstream of its own, which cannot be started until the other two workstreams are completed.
+A workstream ends when it joins another workstream or when it has no more dependencies.
+When two or more workstreams join at the same type, none of the workstreams should contain that type.
+A new workstream should be created for type where workstreams join together, and that type should be included in the new workstream and continue until another shared type is encountered.
+A workstream is not startable until all its dependencies have been migrated.
+
+### Max Workstreams
+
+The calculation of the maximum number of parallel workstreams depends entirely on startable workstreams.
+It might happen that a graph has two workstreams blocked by a single incomplete workstream.
+In this case, the maximum number of parallel workstreams is 1, until the blocking workstream is completed, at which time the maximum number of parallel workstreams is now 2.
+
 ## Cycle Detection
 
 The program should be careful to detect cycles in the graph.
@@ -124,6 +166,8 @@ For example, if edge direction is "from relying type to dependent type" and Type
 Alternatively, if the edge direction is "from dependent to relying type" and TypA references TypeB, and TypeB references TypeC, and TypeC references TypeA, then program should remove the edge from TypeA to TypeC if TypeA is the root type.
 
 Pay particular attention to the direction of the edges, as this often impacts the proper function of the cycle detection algorithm.
+For the purposes of migration planning, types that do not have dependencies should be migrated first, and types that have dependencies should be migrated after their dependencies.
+The topological sort should reflect this order, regardless of the direction of the edges.
 
 Using the graph of directed edges, the program should produce a topological sort of the types.
 The topological sort should reflect acceptable migration order, where dependencies are migrated before dependents.
@@ -134,6 +178,14 @@ Follow common semantics for REST API design, using plural nouns for resources an
 The API should provide endpoints to answer the key questions outlined above.
 
 Add an endpoint to clear all data from the database.
+
+The endpoint(s) for workstreams should return only startable workstreams and should accept a query parameter to request workstreams that are not startable.
+
+The vertex fields should include update endpoints to update the inUse, status, assignedTo, and startable fields, since these fields will be updated during the migration process.
+
+Add an endpoint to bulk upload an array of type names that are in use.
+This endpoint should mark all types as not inUse except for the types in the array, and recompute type complexity and workstreams.
+The endpoint should accept plain text, JSON, or CSV format.
 
 ## Storage
 
