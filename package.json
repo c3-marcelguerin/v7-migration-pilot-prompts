@@ -1,0 +1,31 @@
+{
+  "name": "c3-type-migration-analyzer",
+  "version": "1.0.0",
+  "description": "Analyzes C3 type relationships and produces topological sort for migration planning",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "node test/test.js",
+    "examples": "node examples/usage.js",
+    "analyze": "node index.js"
+  },
+  "keywords": [
+    "c3",
+    "migration",
+    "type-analysis",
+    "topological-sort",
+    "dependency-graph"
+  ],
+  "author": "C3 Migration Team",
+  "license": "MIT",
+  "engines": {
+    "node": ">=12.0.0"
+  },
+  "files": [
+    "src/",
+    "examples/",
+    "test/",
+    "index.js",
+    "README.md"
+  ]
+}
