@@ -52,7 +52,7 @@ The C3 types analyzed by this program must be migrated to a new version.
 The objective of this program is to analyze the interconnecting relationships between C3 types and produce a development sequence for the migration.
 When determining the order of migration, the program must ensure that types are migrated in the correct order based on their dependencies: dependencies first, and then dependent C3 types.
 
-Using the information provided above, write a program that analyzes the relationships between C3 types based on their reference and collection fields.
+Using the information provided above, write a set of programs that analyze the relationships between C3 types based on their reference and collection fields.
 
 When a type A references another type B, it creates a directed edge in a graph.
 The edge represents a dependency of A on B.
@@ -67,16 +67,29 @@ Select the direction that makes the most sense for the migration process and ena
 - What are the minimum and maximum number of parallel workstreams I can have during the migration?
 For the purposes of this migration, a "workstream" is a set of interconnected types that can be migrated in sequence without waiting for other types to be migrated.
 For example, if TypeA references TypeB and TypeB references TypeC, then TypeA, TypeB, and TypeC are all part of the same workstream.
-- Show me the migration sequence for a given type (by type name)
+- Show me the migration sequence for a given type (by type name).
+Note that this should refer to the existing graph and not require a new graph because cycle detection would result in a different graph.
 
 This analysis will start with a "root type" and will traverse the C3 type system to find all unique edges in the graph.
 The program should not analyze types more than once.
 
-For each type, the program should assign a level of complexity based on the number of edges it has.
+The program should consist of two parts:
+1. A JavaScript "snippet" that can be copied and run in the Chrome developer tools console which will gather the C3 type relationship graph data and export it in a format that can be used by the second part of the program.
+2. A Node.js program that takes the exported data from the first part and analyzes the relationships.
+Add endpoints to the Node.js program that will allow it to be run from the command line, and provide a comprehensive API for analyzing the data.
+
+The Snippet should gather data required during the analysis phase.
+Keep the Snippet simple and focused on gathering the necessary data.
+
+The Node.js program should analyze the data and produce a topological sort of the types, reflecting acceptable migration order, where dependencies are migrated before dependents.
+
+During the analysis phase, for each type the program should assign a level of complexity based on the number of edges it has.
 Break down the complexity of each type into three t-shirt sizes (S, M, L) based on the number of edges using the following criteria:
 - S: 45% of the types
 - M: 30% of the types
 - L: 25% of the types
+
+## Ignored Types
 
 The program should ignore the following types, essentially treating them as "primitive" types that do not have any relationships with other types:
 - AclEntry
@@ -102,16 +115,35 @@ The program should ignore the following types, essentially treating them as "pri
 - User
 - VersionEdit
 
+## Cycle Detection
+
 The program should be careful to detect cycles in the graph.
 
 If a cycle is detected, the program should eliminate the edge pointing "to" or "from" the type that is closest in depth to the root type, depending on the selected edge direction.
 For example, if edge direction is "from relying type to dependent type" and TypeA references TypeB, and TypeB references TypeC, and TypeC references TypeA, the program should remove the edge from TypeA to TypeC if TypeA is the root type.
 Alternatively, if the edge direction is "from dependent to relying type" and TypA references TypeB, and TypeB references TypeC, and TypeC references TypeA, then program should remove the edge from TypeA to TypeC if TypeA is the root type.
 
+Pay particular attention to the direction of the edges, as this often impacts the proper function of the cycle detection algorithm.
+
 Using the graph of directed edges, the program should produce a topological sort of the types.
 The topological sort should reflect acceptable migration order, where dependencies are migrated before dependents.
 
+## API Design
+
+Follow common semantics for REST API design, using plural nouns for resources and HTTP verbs for actions.
+The API should provide endpoints to answer the key questions outlined above.
+
+Add an endpoint to clear all data from the database.
+
+## Storage
+
+The Node.js program should store the raw graph data and important analysis metadata in a SQLite database.
+
+## Documentation and Testing
+
 Provide an example of how to use the program and a comprehensive documentation of the API.
+Be sure to include any context you might need to expand this program in future prompts.
+Future prompts may ask you to add additional REST API endpoints, add a UI, or integrate with other systems via REST APIs.
 
 Build a set of tests to cover the functionality of the program.
 When writing a test, express the expected behavior of what is being tested using "should" statements.
